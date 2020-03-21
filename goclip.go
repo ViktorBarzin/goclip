@@ -19,6 +19,7 @@ const (
 )
 
 func main() {
+	println("kek")
 	app := cli.NewApp()
 
 	app.Description = "kek"
