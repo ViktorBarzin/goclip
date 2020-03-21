@@ -41,7 +41,7 @@ func main() {
 		},
 	}
 	app.Flags = []cli.Flag{
-		&cli.StringFlag{
+		cli.StringFlag{
 			Name:  "timeout, t",
 			Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
 			Value: strconv.Itoa(defaultRunTimeout),
@@ -77,6 +77,7 @@ func receiveHandler(c *cli.Context) error {
 		quit <- "done"
 	}()
 	durationStr := c.String("timeout")
+	log.Println("Waiting", durationStr, "seconds to receive clipboard contents")
 	select {
 	case <-quit:
 		log.Println("Received clipboard contents. Closing receiver")
