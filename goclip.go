@@ -24,7 +24,7 @@ func main() {
 	app.Description = "kek"
 	app.Name = "goclip"
 	app.Usage = "Multicast clipboard contents over the network"
-	app.Commands = []*cli.Command{
+	app.Commands = []cli.Command{
 		{
 			Name:  "send",
 			Usage: "send clipboard contents",
@@ -42,10 +42,9 @@ func main() {
 	}
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
-			Name:    "timeout",
-			Aliases: []string{"t"},
-			Usage:   "Seconds for which the application will be performing the action (send, receive). After this exit.",
-			Value:   strconv.Itoa(defaultRunTimeout),
+			Name:  "timeout, t",
+			Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
+			Value: strconv.Itoa(defaultRunTimeout),
 		},
 	}
 
