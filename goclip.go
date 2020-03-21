@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -20,34 +21,34 @@ const (
 func main() {
 	print("kek")
 	return
-	// app := cli.NewApp()
+	app := cli.NewApp()
 
-	// app.Description = "kek"
-	// app.Name = "goclip"
-	// app.Usage = "Multicast clipboard contents over the network"
-	// app.Commands = []cli.Command{
-	// 	{
-	// 		Name:  "send",
-	// 		Usage: "send clipboard contents",
-	// 		Action: func(c *cli.Context) error {
-	// 			return sendHandler(c)
-	// 		},
-	// 	},
-	// 	{
-	// 		Name:  "receive",
-	// 		Usage: "receive clipboard contents",
-	// 		Action: func(c *cli.Context) error {
-	// 			return receiveHandler(c)
-	// 		},
-	// 	},
-	// }
-	// app.Flags = []cli.Flag{
-	// 	cli.StringFlag{
-	// 		Name:  "timeout, t",
-	// 		Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-	// 		Value: strconv.Itoa(defaultRunTimeout),
-	// 	},
-	// }
+	app.Description = "kek"
+	app.Name = "goclip"
+	app.Usage = "Multicast clipboard contents over the network"
+	app.Commands = []cli.Command{
+		{
+			Name:  "send",
+			Usage: "send clipboard contents",
+			Action: func(c *cli.Context) error {
+				return sendHandler(c)
+			},
+		},
+		{
+			Name:  "receive",
+			Usage: "receive clipboard contents",
+			Action: func(c *cli.Context) error {
+				return receiveHandler(c)
+			},
+		},
+	}
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "timeout, t",
+			Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
+			Value: strconv.Itoa(defaultRunTimeout),
+		},
+	}
 
 	// app.Action = func(c *cli.Context) error {
 	// 	address := c.Args().Get(0)
@@ -59,7 +60,7 @@ func main() {
 	// 	return nil
 	// }
 
-	// app.Run(os.Args)
+	app.Run(os.Args)
 }
 
 func waitTimeout(durationStr string) <-chan time.Time {
