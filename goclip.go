@@ -19,6 +19,8 @@ const (
 )
 
 func main() {
+	print("kek")
+	return
 	app := cli.NewApp()
 
 	app.Description = "kek"
