@@ -62,10 +62,11 @@ func main() {
 }
 
 func waitTimeout(durationStr string) <-chan time.Time {
-	if _, err := strconv.Atoi(durationStr); err != nil {
-		log.Fatal("Duration must be a number. Using default", defaultRunTimeout)
+	durationInt := defaultRunTimeout
+	if _, err := strconv.Atoi(durationStr); err == nil {
+		// log.Fatal("Duration must be a number. Got:", durationStr, "Using default:", defaultRunTimeout)
+		durationInt, _ = strconv.Atoi(durationStr)
 	}
-	durationInt, _ := strconv.Atoi(durationStr)
 	return time.After(time.Duration(durationInt) * time.Second)
 }
 
@@ -88,6 +89,7 @@ func receiveHandler(c *cli.Context) error {
 func sendHandler(c *cli.Context) error {
 	go func() { multicastClipboard(defaultMulticastAddress) }()
 	durationStr := c.String("timeout")
+	print(c.Args())
 	<-waitTimeout(durationStr)
 	return nil
 }
