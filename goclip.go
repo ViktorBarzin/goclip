@@ -1,15 +1,15 @@
 package main
 
 import (
-	"encoding/hex"
+	"encoding/json"
 	"log"
 	"net"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/atotto/clipboard"
 	"github.com/urfave/cli"
+	"github.com/viktorbarzin/goclip/clipboard"
 )
 
 const (
@@ -17,6 +17,13 @@ const (
 	defaultRunTimeout       = 60
 	maxDatagramSize         = 8192
 )
+
+// Used to (de)serialize messages
+type Message struct {
+	Content string
+	Length  int
+	Type    clipboard.ClipboardType
+}
 
 func main() {
 	app := cli.NewApp()
@@ -48,23 +55,13 @@ func main() {
 		},
 	}
 
-	// app.Action = func(c *cli.Context) error {
-	// 	address := c.Args().Get(0)
-	// 	if address == "" {
-	// 		address = defaultMulticastAddress
-	// 	}
-	// 	go multicast.Listen(address, msgHandler)
-	// 	multicastClipboard(address)
-	// 	return nil
-	// }
-
 	app.Run(os.Args)
 }
 
 func waitTimeout(durationStr string) <-chan time.Time {
 	durationInt := defaultRunTimeout
 	if _, err := strconv.Atoi(durationStr); err == nil {
-		// log.Fatal("Duration must be a number. Got:", durationStr, "Using default:", defaultRunTimeout)
+		log.Println("Duration must be a number. Got:", durationStr, "Using default:", defaultRunTimeout)
 		durationInt, _ = strconv.Atoi(durationStr)
 	}
 	return time.After(time.Duration(durationInt) * time.Second)
@@ -88,10 +85,20 @@ func receiveHandler(c *cli.Context) error {
 }
 
 func sendHandler(c *cli.Context) error {
-	go func() { multicastClipboard(defaultMulticastAddress) }()
+	quit := make(chan string, 1)
 	durationStr := c.String("timeout")
-	print(c.Args())
-	<-waitTimeout(durationStr)
+	go func() {
+		multicastClipboard(defaultMulticastAddress)
+		quit <- "done"
+	}()
+
+	select {
+	case <-quit:
+		log.Println("Done")
+	case <-waitTimeout(durationStr):
+		log.Println("Timed out")
+
+	}
 	return nil
 }
 
@@ -102,35 +109,20 @@ func multicastClipboard(addr string) {
 	}
 
 	for {
-		clip, _ := clipboard.ReadAll()
+		clip, clipType, _ := clipboard.GetEncodedClipboard()
 		log.Println("Multicasting clipboard contents to", addr, "\n", clip)
-		conn.Write(encode(clip))
+		msg := Message{Content: clip, Type: clipType, Length: len(clip)}
+		encoded, _ := json.Marshal(msg)
+		conn.Write(encoded)
 		time.Sleep(1 * time.Second)
 	}
 }
 
 func msgHandler(src *net.UDPAddr, n int, b []byte) {
-	decodedStr := decode(b[:n])
-	log.Println(n, "bytes read from", src, "Inseting into clipboard:\n", decodedStr)
-	clipboard.WriteAll(decodedStr)
-}
-
-func decode(src []byte) string {
-	dst := make([]byte, hex.DecodedLen(len(src)))
-	n, err := hex.Decode(dst, src)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return string(dst[:n])
-}
-
-func encode(str string) []byte {
-	src := []byte(str)
-
-	dst := make([]byte, hex.EncodedLen(len(src)))
-	hex.Encode(dst, src)
-
-	return dst
+	var msg Message
+	json.Unmarshal(b[:n], &msg)
+	log.Println(n, "bytes read from", src)
+	clipboard.StoreClipboard(msg.Content, msg.Type)
 }
 
 // Listen binds to the UDP address and port given and writes packets received
