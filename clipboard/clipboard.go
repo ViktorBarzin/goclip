@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/base64"
 	b64 "encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -13,7 +14,6 @@ import (
 	"github.com/gotk3/gotk3/gdk"
 	"github.com/gotk3/gotk3/gtk"
 	"github.com/mattn/go-gtk/gdkpixbuf"
-	// "github.com/mattn/go-gtk/gdkpixbuf"
 )
 
 // ClipboardType shows the type of the clipboard that is operated
@@ -101,7 +101,7 @@ func StoreClipboard(content string, clipType ClipboardType) error {
 	case IMAGE:
 		return storeImageClipboard(clip, content)
 	default:
-		return fmt.Errorf("Type not implemented: ", clipType)
+		return errors.New("Type not implemented: " + clipType.String())
 	}
 }
 
@@ -116,12 +116,10 @@ func storeTextClipBoard(clip *gtk.Clipboard, content string) error {
 	// be still there. inserting a new line forces them to redraw on top again
 	if clip.WaitIsTextAvailable() {
 		oldClipContent, err := clip.WaitForText()
-		println(oldClipContent)
 		if err != nil {
 			log.Fatalln(err)
 			return err
 		}
-		log.Println(oldClipContent)
 		if oldClipContent == decodedContent {
 			clip.SetText("\n")
 		} else {
@@ -129,7 +127,7 @@ func storeTextClipBoard(clip *gtk.Clipboard, content string) error {
 			clip.SetText(decodedContent)
 		}
 	} else {
-		log.Println(fmt.Print("Setting clipboard content:", decodedContent))
+		log.Println("Setting clipboard content:", decodedContent)
 		clip.SetText(decodedContent)
 	}
 	go func() { time.Sleep(100 * time.Millisecond); gtk.MainQuit() }()
@@ -140,7 +138,6 @@ func storeTextClipBoard(clip *gtk.Clipboard, content string) error {
 func storeImageClipboard(clip *gtk.Clipboard, content string) error {
 	decodedImage := make([]byte, len(content))
 	b64.StdEncoding.Decode(decodedImage, []byte(content))
-	println(decodedImage)
 
 	tempPixbufFile := "temp.png"
 	tempPixbuf, _ := gdkpixbuf.NewPixbufFromBytes(decodedImage)

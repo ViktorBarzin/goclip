@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,9 +18,10 @@ const (
 	defaultMulticastAddress = "239.0.0.0:9999"
 	defaultRunTimeout       = 60
 	maxDatagramSize         = 8192
+	peerToPeerListenPort    = 30099
 )
 
-// Used to (de)serialize messages
+// Message used to (de)serialize messages
 type Message struct {
 	Content string
 	Length  int
@@ -38,6 +41,13 @@ func main() {
 			Action: func(c *cli.Context) error {
 				return sendHandler(c)
 			},
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "timeout",
+					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
+					Value: strconv.Itoa(defaultRunTimeout),
+				},
+			},
 		},
 		{
 			Name:  "receive",
@@ -45,13 +55,13 @@ func main() {
 			Action: func(c *cli.Context) error {
 				return receiveHandler(c)
 			},
-		},
-	}
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "timeout, t",
-			Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-			Value: strconv.Itoa(defaultRunTimeout),
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "timeout",
+					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
+					Value: strconv.Itoa(defaultRunTimeout),
+				},
+			},
 		},
 	}
 
@@ -59,10 +69,10 @@ func main() {
 }
 
 func waitTimeout(durationStr string) <-chan time.Time {
-	durationInt := defaultRunTimeout
-	if _, err := strconv.Atoi(durationStr); err == nil {
+	durationInt, err := strconv.Atoi(durationStr)
+	if err != nil {
 		log.Println("Duration must be a number. Got:", durationStr, "Using default:", defaultRunTimeout)
-		durationInt, _ = strconv.Atoi(durationStr)
+		durationInt = defaultRunTimeout
 	}
 	return time.After(time.Duration(durationInt) * time.Second)
 }
@@ -87,6 +97,7 @@ func receiveHandler(c *cli.Context) error {
 func sendHandler(c *cli.Context) error {
 	quit := make(chan string, 1)
 	durationStr := c.String("timeout")
+	log.Println("Duration", durationStr)
 	go func() {
 		multicastClipboard(defaultMulticastAddress)
 		quit <- "done"
@@ -96,8 +107,7 @@ func sendHandler(c *cli.Context) error {
 	case <-quit:
 		log.Println("Done")
 	case <-waitTimeout(durationStr):
-		log.Println("Timed out")
-
+		log.Println("Reached broadcasting limit")
 	}
 	return nil
 }
@@ -107,22 +117,91 @@ func multicastClipboard(addr string) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	tcpListenerStarted := false
 
+	log.Println("Multicasting clipboard contents to", addr)
 	for {
 		clip, clipType, _ := clipboard.GetEncodedClipboard()
-		log.Println("Multicasting clipboard contents to", addr, "\n", clip)
 		msg := Message{Content: clip, Type: clipType, Length: len(clip)}
+		// If msg len is bigger than the UDP datagram, do a TCP peer-to-peer connection
+		// if true {
+		if msg.Length > maxDatagramSize {
+			log.Println("Message size >", maxDatagramSize, ", falling back to peer-to-peer connection")
+
+			if !tcpListenerStarted {
+				log.Println("Starting TCP listener on port ", peerToPeerListenPort)
+				go startTCPListener(peerToPeerListenPort, msg)
+				tcpListenerStarted = true
+			}
+			msg.Content = "" // Do not send content here
+		}
 		encoded, _ := json.Marshal(msg)
 		conn.Write(encoded)
 		time.Sleep(1 * time.Second)
 	}
 }
 
+func startTCPListener(listenPort int, messageToSend Message) {
+	addr, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(listenPort))
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	conn, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer conn.Close()
+
+	for {
+		client, _ := conn.Accept()
+		go func(connection net.Conn) {
+			defer client.Close()
+			log.Println("Sending", messageToSend.Length, "bytes to", client.RemoteAddr())
+			encoded, _ := json.Marshal(messageToSend)
+			client.Write(encoded)
+			client.Write([]byte("\n")) // Delimiter
+		}(client)
+	}
+
+}
 func msgHandler(src *net.UDPAddr, n int, b []byte) {
 	var msg Message
 	json.Unmarshal(b[:n], &msg)
-	log.Println(n, "bytes read from", src)
+	log.Println("Read", strconv.Itoa(n), "bytes from broadcast traffic from", src)
+
+	// If length > max UDP packet size, do peer-to-peer connection to get value
+	// if true {
+	if msg.Length > maxDatagramSize {
+		decodedMessage, err := getClipboardFromPeer(src.IP, msg.Length)
+		if err != nil {
+			log.Fatal(err)
+			return
+		}
+		msg.Content = decodedMessage.Content
+	}
 	clipboard.StoreClipboard(msg.Content, msg.Type)
+}
+
+func getClipboardFromPeer(broadcasterAddress net.IP, contentLength int) (Message, error) {
+	serverAddress := fmt.Sprintf(broadcasterAddress.String() + ":" + strconv.Itoa(peerToPeerListenPort))
+	conn, err := net.Dial("tcp", serverAddress)
+	if err != nil {
+		return Message{}, err
+	}
+	defer conn.Close()
+
+	clientResponse, err := bufio.NewReader(conn).ReadBytes('\n')
+	if err != nil {
+		return Message{}, err
+	}
+	var decodedMessage Message
+	err = json.Unmarshal(clientResponse, &decodedMessage)
+	if err != nil {
+		return Message{}, fmt.Errorf("Could not decode peer response: " + err.Error())
+	}
+	log.Println("Got", decodedMessage.Length, "bytes of content from direct peer-to-peer traffic with", serverAddress)
+	return decodedMessage, nil
 }
 
 // Listen binds to the UDP address and port given and writes packets received
