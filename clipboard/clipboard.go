@@ -55,7 +55,6 @@ func GetEncodedClipboard() (encodedClipboard string, clipType ClipboardType, err
 	// Check if image clipboard is available
 	if clip.WaitIsImageAvailable() {
 		oldClipContent, err := clip.WaitForImage()
-		log.Println("Got image in the clipboard")
 		if err != nil {
 			log.Fatalln(err)
 			return "", 0, err
@@ -66,7 +65,7 @@ func GetEncodedClipboard() (encodedClipboard string, clipType ClipboardType, err
 		os.Remove(tempFilePath)
 		return encodedClip, IMAGE, nil
 	}
-	return "", 0, fmt.Errorf("Failed to get clipboard image/text.")
+	return "", 0, fmt.Errorf("Failed to get clipboard image/text")
 
 }
 

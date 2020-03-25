@@ -97,7 +97,6 @@ func receiveHandler(c *cli.Context) error {
 func sendHandler(c *cli.Context) error {
 	quit := make(chan string, 1)
 	durationStr := c.String("timeout")
-	log.Println("Duration", durationStr)
 	go func() {
 		multicastClipboard(defaultMulticastAddress)
 		quit <- "done"
@@ -107,7 +106,7 @@ func sendHandler(c *cli.Context) error {
 	case <-quit:
 		log.Println("Done")
 	case <-waitTimeout(durationStr):
-		log.Println("Reached broadcasting limit")
+		log.Println("Reached broadcasting limit of", durationStr, "seconds")
 	}
 	return nil
 }
@@ -124,12 +123,10 @@ func multicastClipboard(addr string) {
 		clip, clipType, _ := clipboard.GetEncodedClipboard()
 		msg := Message{Content: clip, Type: clipType, Length: len(clip)}
 		// If msg len is bigger than the UDP datagram, do a TCP peer-to-peer connection
-		// if true {
 		if msg.Length > maxDatagramSize {
-			log.Println("Message size >", maxDatagramSize, ", falling back to peer-to-peer connection")
-
 			if !tcpListenerStarted {
-				log.Println("Starting TCP listener on port ", peerToPeerListenPort)
+				log.Println("Message size >", maxDatagramSize, ". Falling back to peer-to-peer connection")
+				log.Println("Starting TCP listener on port", peerToPeerListenPort)
 				go startTCPListener(peerToPeerListenPort, msg)
 				tcpListenerStarted = true
 			}
@@ -171,7 +168,6 @@ func msgHandler(src *net.UDPAddr, n int, b []byte) {
 	log.Println("Read", strconv.Itoa(n), "bytes from broadcast traffic from", src)
 
 	// If length > max UDP packet size, do peer-to-peer connection to get value
-	// if true {
 	if msg.Length > maxDatagramSize {
 		decodedMessage, err := getClipboardFromPeer(src.IP, msg.Length)
 		if err != nil {
