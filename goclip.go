@@ -3,10 +3,12 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -19,6 +21,7 @@ const (
 	defaultRunTimeout       = 60
 	maxDatagramSize         = 8192
 	peerToPeerListenPort    = 30099
+	allInterfaces           = "all"
 )
 
 // Message used to (de)serialize messages
@@ -31,7 +34,7 @@ type Message struct {
 func main() {
 	app := cli.NewApp()
 
-	app.Description = "kek"
+	app.Description = fmt.Sprint("Application to share your clipboard over a LAN. The content is multicasted to ", defaultMulticastAddress, ". If the content exceeds the maximum UDP datagram size of ", maxDatagramSize, " bytes then peer-to-peer TCP connection is initialized and content is send over it instead.")
 	app.Name = "goclip"
 	app.Usage = "Multicast clipboard contents over the network"
 	app.Commands = []cli.Command{
@@ -42,10 +45,15 @@ func main() {
 				return sendHandler(c)
 			},
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "timeout",
+				cli.IntFlag{
+					Name:  "timeout, t",
 					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-					Value: strconv.Itoa(defaultRunTimeout),
+					Value: defaultRunTimeout,
+				},
+				cli.StringSliceFlag{
+					Name:  "interface, i",
+					Usage: "Interface to multicast on. Can be specified multiple times. (default: \"all\")",
+					// Value: &cli.StringSlice{allInterfaces},  // Does not work as default value, but appends
 				},
 			},
 		},
@@ -56,10 +64,10 @@ func main() {
 				return receiveHandler(c)
 			},
 			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "timeout",
+				cli.IntFlag{
+					Name:  "timeout, t",
 					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-					Value: strconv.Itoa(defaultRunTimeout),
+					Value: defaultRunTimeout,
 				},
 			},
 		},
@@ -98,7 +106,8 @@ func sendHandler(c *cli.Context) error {
 	quit := make(chan string, 1)
 	durationStr := c.String("timeout")
 	go func() {
-		multicastClipboard(defaultMulticastAddress)
+		interfaces := c.StringSlice("interface")
+		multicastClipboard(defaultMulticastAddress, interfaces)
 		quit <- "done"
 	}()
 
@@ -111,17 +120,18 @@ func sendHandler(c *cli.Context) error {
 	return nil
 }
 
-func multicastClipboard(addr string) {
-	conn, err := NewBroadcaster(addr)
-	if err != nil {
-		log.Fatal(err)
+func multicastClipboard(addr string, interfacesNames []string) {
+	multicasters, broadcastingInterfaces := getMulticasters(addr, interfacesNames)
+	if len(multicasters) == 0 {
+		log.Fatalln("Could not find any interfaces to multicast on. Available interfaces:", getAllInterfaceNames())
 	}
+
 	tcpListenerStarted := false
 
-	log.Println("Multicasting clipboard contents to", addr)
 	for {
 		clip, clipType, _ := clipboard.GetEncodedClipboard()
 		msg := Message{Content: clip, Type: clipType, Length: len(clip)}
+		log.Println("Multicasting", msg.Length, " bytes of clipboard contents to", addr, "on interfaces:", broadcastingInterfaces)
 		// If msg len is bigger than the UDP datagram, do a TCP peer-to-peer connection
 		if msg.Length > maxDatagramSize {
 			if !tcpListenerStarted {
@@ -133,8 +143,60 @@ func multicastClipboard(addr string) {
 			msg.Content = "" // Do not send content here
 		}
 		encoded, _ := json.Marshal(msg)
-		conn.Write(encoded)
+		multicastMessage(multicasters, encoded)
 		time.Sleep(1 * time.Second)
+	}
+}
+
+func getMulticasters(addr string, interfacesNames []string) ([]*net.UDPConn, []string) {
+	var multicasters []*net.UDPConn
+	var broadcastingInterfaces []string
+	sort.Strings(interfacesNames)
+
+	// if empty interfaces, use all
+	if len(interfacesNames) == 0 || contains(interfacesNames, "all") {
+		interfacesNames = remove(interfacesNames, allInterfaces)
+		log.Println("Trying to get multicast address for all interfaces")
+		interfacesNames = getAllInterfaceNames()
+	}
+
+	for _, interfaceName := range interfacesNames {
+		b, err := NewBroadcaster(addr, interfaceName)
+		if err != nil {
+			log.Println("Error for interface", interfaceName, ":", err.Error()+".", "Skipping...")
+			continue
+		}
+		multicasters = append(multicasters, b)
+		broadcastingInterfaces = append(broadcastingInterfaces, interfaceName)
+	}
+	return multicasters, broadcastingInterfaces
+}
+
+func getAllInterfaceNames() []string {
+	var interfacesNames []string
+	addrs, _ := net.Interfaces()
+	for _, el := range addrs {
+		interfacesNames = append(interfacesNames, el.Name)
+	}
+	return interfacesNames
+}
+
+func contains(s []string, searchterm string) bool {
+	i := sort.SearchStrings(s, searchterm)
+	return i < len(s) && s[i] == searchterm
+}
+func remove(s []string, r string) []string {
+	for i, v := range s {
+		if v == r {
+			return append(s[:i], s[i+1:]...)
+		}
+	}
+	return s
+}
+
+func multicastMessage(multicasters []*net.UDPConn, encoded []byte) {
+	for _, multicaster := range multicasters {
+		go multicaster.Write(encoded)
 	}
 }
 
@@ -228,16 +290,38 @@ func Listen(address string, handler func(*net.UDPAddr, int, []byte)) {
 }
 
 // NewBroadcaster creates a new UDP multicast connection on which to broadcast
-func NewBroadcaster(address string) (*net.UDPConn, error) {
-	addr, err := net.ResolveUDPAddr("udp4", address)
+func NewBroadcaster(address string, interfaceName string) (*net.UDPConn, error) {
+	remoteAddr, err := net.ResolveUDPAddr("udp4", address)
 	if err != nil {
 		return nil, err
 	}
 
-	conn, err := net.DialUDP("udp4", nil, addr)
+	localIP, err := getIPForInterface(interfaceName)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := net.DialUDP("udp4", &net.UDPAddr{IP: localIP}, remoteAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	return conn, nil
+}
+
+func getIPForInterface(interfaceName string) (net.IP, error) {
+	ief, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return net.IP{}, err
+	}
+	addrs, err := ief.Addrs()
+	if err != nil {
+		return net.IP{}, err
+	}
+
+	if len(addrs) == 0 {
+		return net.IP{}, errors.New("No address found for this interface")
+	}
+	addr := &net.UDPAddr{IP: addrs[0].(*net.IPNet).IP}
+	return addr.IP, nil
 }
