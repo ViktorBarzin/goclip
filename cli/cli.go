@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	urfaveCLI "github.com/urfave/cli"
+	urfaveCLI "github.com/urfave/cli/v2"
 	"github.com/viktorbarzin/goclip/common"
 	"github.com/viktorbarzin/goclip/comms"
 )
@@ -18,7 +18,7 @@ func GetApp() *urfaveCLI.App {
 	app.Description = fmt.Sprint("Application to share your clipboard over a LAN. The content is multicasted to ", common.DefaultMulticastAddress, ". If the content exceeds the maximum UDP datagram size of ", common.MaxDatagramSize, " bytes then peer-to-peer TCP connection is initialized and content is send over it instead.")
 	app.Name = "goclip"
 	app.Usage = "Multicast clipboard contents over the network"
-	app.Commands = []urfaveCLI.Command{
+	app.Commands = []*urfaveCLI.Command{
 		{
 			Name:  "send",
 			Usage: "send clipboard contents",
@@ -26,14 +26,16 @@ func GetApp() *urfaveCLI.App {
 				return sendHandler(c)
 			},
 			Flags: []urfaveCLI.Flag{
-				urfaveCLI.IntFlag{
-					Name:  "timeout, t",
-					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-					Value: common.DefaultRunTimeout,
+				&urfaveCLI.IntFlag{
+					Name:    "t",
+					Aliases: []string{"timeout"},
+					Usage:   "Seconds for which the application will be performing the action (send, receive). After this exit.",
+					Value:   common.DefaultRunTimeout,
 				},
-				urfaveCLI.StringSliceFlag{
-					Name:  "interface, i",
-					Usage: "Interface to multicast on. Can be specified multiple times. (default: \"all\")",
+				&urfaveCLI.StringSliceFlag{
+					Name:    "i",
+					Aliases: []string{"interface"},
+					Usage:   "Interface to multicast on. Can be specified multiple times. (default: \"all\")",
 					// Value: &urfaceCLI.StringSlice{allInterfaces},  // Does not work as default value, but appends
 				},
 			},
@@ -45,7 +47,7 @@ func GetApp() *urfaveCLI.App {
 				return receiveHandler(c)
 			},
 			Flags: []urfaveCLI.Flag{
-				urfaveCLI.IntFlag{
+				&urfaveCLI.IntFlag{
 					Name:  "timeout, t",
 					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
 					Value: common.DefaultRunTimeout,
