@@ -1,0 +1,6 @@
+<buildinfo project="home:edinpriqtel" repository="Arch" downloadurl="http://download.opensuse.org/repositories">
+  <arch>x86_64</arch>
+  <error>unresolvable: nothing provides obs-service-tar, nothing provides obs-service-recompress, nothing provides obs-service-set_version</error>
+  <debuginfo>0</debuginfo>
+  <subpack>goclip</subpack>
+</buildinfo>
