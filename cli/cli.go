@@ -48,9 +48,10 @@ func GetApp() *urfaveCLI.App {
 			},
 			Flags: []urfaveCLI.Flag{
 				&urfaveCLI.IntFlag{
-					Name:  "timeout, t",
-					Usage: "Seconds for which the application will be performing the action (send, receive). After this exit.",
-					Value: common.DefaultRunTimeout,
+					Name:    "t",
+					Aliases: []string{"timeout"},
+					Usage:   "Seconds for which the application will be performing the action (send, receive). After this exit.",
+					Value:   common.DefaultRunTimeout,
 				},
 			},
 		},
