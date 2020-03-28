@@ -1,7 +1,0 @@
-<services>
-    <service name="obs_scm">
-        <param name="url">https://github.com/ViktorBarzin/goclip.git</param>
-        <param name="scm">git</param>
-    </service>
-    <service mode="buildtime" name="set_version" />
-</services>
