@@ -53,6 +53,10 @@ If you are using anything else, see the installation instructions [here](https:/
 
 # Installation
 
+From an RPM from [here](releases/goclip.x86_64.rpm)
+
+Or
+
 From source with Golang installed
 
 ```bash
