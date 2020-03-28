@@ -53,6 +53,10 @@ If you are using anything else, see the installation instructions [here](https:/
 
 # Installation
 
+From a precompiled binary from the [Releases page](https://github.com/ViktorBarzin/goclip/releases)
+
+Or
+
 From an RPM from [here](releases/goclip.x86_64.rpm)
 
 Or
