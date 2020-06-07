@@ -1,5 +1,5 @@
 # goclip
-
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=ViktorBarzin_goclip&metric=alert_status)](https://sonarcloud.io/dashboard?id=ViktorBarzin_goclip)
 ## Description
 
 Command-line application to share the contents of your clipboard with people on your local area network (LAN).
